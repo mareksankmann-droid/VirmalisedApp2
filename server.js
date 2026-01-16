@@ -117,7 +117,7 @@ function tallinnHourKeyNow() {
   return `${get("year")}-${get("month")}-${get("day")}T${get("hour")}:00`;
 }
 
-// Open-Meteo: pilvisus % (praegune tund)
+// Open-Meteo: pilvisus % (current – reaalsem “praegu”)
 app.get("/api/clouds", async (req, res) => {
   try {
     const lat = Number(req.query.lat);
@@ -129,38 +129,22 @@ app.get("/api/clouds", async (req, res) => {
     const url =
       `https://api.open-meteo.com/v1/forecast?latitude=${encodeURIComponent(lat)}` +
       `&longitude=${encodeURIComponent(lon)}` +
-      `&hourly=cloud_cover&forecast_days=2&timezone=Europe%2FTallinn`;
+      `&current=cloud_cover&timezone=Europe%2FTallinn`;
 
     const r = await fetch(url);
     if (!r.ok) throw new Error("Open-Meteo HTTP " + r.status);
     const data = await r.json();
 
-    const times = data?.hourly?.time ?? [];
-    const clouds = data?.hourly?.cloud_cover ?? [];
-
-    const key = tallinnHourKeyNow();
-    let idx = times.indexOf(key);
-
-    // fallback: vali lähim aeg
-    if (idx === -1) {
-      const now = Date.now();
-      let bestDiff = Infinity;
-      for (let i = 0; i < times.length; i++) {
-        const t = new Date(times[i]).getTime();
-        const diff = Math.abs(t - now);
-        if (Number.isFinite(diff) && diff < bestDiff) { bestDiff = diff; idx = i; }
-      }
-    }
-
     res.json({
       request: { lat, lon },
-      time: idx >= 0 ? times[idx] : null,
-      cloudCoverPercent: idx >= 0 ? clouds[idx] : null
+      time: data?.current?.time ?? null,
+      cloudCoverPercent: data?.current?.cloud_cover ?? null
     });
   } catch (e) {
     res.status(500).json({ error: String(e) });
   }
 });
+
 
 
 // Pilvisus prognoos järgmisteks tundideks (nt 12h)
@@ -203,6 +187,36 @@ app.get("/api/clouds_next", async (req, res) => {
     }
 
     res.json({ request: { lat, lon, hours }, items: out });
+  } catch (e) {
+    res.status(500).json({ error: String(e) });
+  }
+});
+
+
+
+// Open-Meteo: temperatuur (current)
+app.get("/api/temp", async (req, res) => {
+  try {
+    const lat = Number(req.query.lat);
+    const lon = Number(req.query.lon);
+    if (!Number.isFinite(lat) || !Number.isFinite(lon)) {
+      return res.status(400).json({ error: "Lisa ?lat=..&lon=.." });
+    }
+
+    const url =
+      `https://api.open-meteo.com/v1/forecast?latitude=${encodeURIComponent(lat)}` +
+      `&longitude=${encodeURIComponent(lon)}` +
+      `&current=temperature_2m&timezone=Europe%2FTallinn`;
+
+    const r = await fetch(url);
+    if (!r.ok) throw new Error("Open-Meteo HTTP " + r.status);
+    const data = await r.json();
+
+    res.json({
+      request: { lat, lon },
+      time: data?.current?.time ?? null,
+      temperatureC: data?.current?.temperature_2m ?? null
+    });
   } catch (e) {
     res.status(500).json({ error: String(e) });
   }

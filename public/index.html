@@ -8,7 +8,7 @@
     body { font-family: system-ui, -apple-system, sans-serif; margin: 24px; }
     .card { border: 1px solid #ddd; border-radius: 12px; padding: 16px; max-width: 860px; }
     .row { display:flex; gap:10px; flex-wrap:wrap; align-items:center; }
-    .grid { display:grid; grid-template-columns: 1fr 1fr 1fr; gap:12px; margin-top:12px; }
+    .grid { display:grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap:12px; margin-top:12px; }
     .mini { border:1px solid #eee; border-radius:12px; padding:12px; }
     .big { font-size: 44px; font-weight: 800; margin: 6px 0; }
     .muted { opacity: 0.75; }
@@ -76,6 +76,12 @@
         <div class="big" id="clouds">—</div>
         <div class="muted" id="cloudTime"></div>
       </div>
+    
+      <div class="mini" id="tempBox">
+        <div class="muted">Temperatuur (°C)</div>
+        <div class="big" id="temp">—</div>
+        <div class="muted" id="tempTime"></div>
+      </div>
     </div>
 
     <hr style="margin:16px 0; opacity:.25;" />
@@ -106,6 +112,9 @@
 
     const cloudsEl = document.getElementById("clouds");
     const cloudTimeEl = document.getElementById("cloudTime");
+
+    const tempEl = document.getElementById("temp");
+    const tempTimeEl = document.getElementById("tempTime");
     const cloudBoxEl = document.getElementById("cloudBox");
 
     const kpEl = document.getElementById("kp");
@@ -241,11 +250,12 @@ function computeScore(auroraProbPercent, cloudCoverPercent) {
       cloudsEl.textContent = "…";
       kpEl.textContent = "…";
 
-      const [kp, aur, clouds] = await Promise.all([
+      const [kp, aur, clouds, temp] = await Promise.all([
         fetch("/api/kp").then(r => r.json()),
         fetch(`/api/aurora?lat=${chosen.lat}&lon=${chosen.lon}`).then(r => r.json()),
         fetch(`/api/clouds?lat=${chosen.lat}&lon=${chosen.lon}`).then(r => r.json())
-      ]);
+      ,
+        fetch(`/api/temp?lat=${chosen.lat}&lon=${chosen.lon}`).then(r => r.json())]);
 
       const kpNum = Number(kp.lastKp);
       kpEl.textContent = Number.isFinite(kpNum) ? kpNum.toFixed(2) : (kp.lastKp ?? "—");
@@ -264,6 +274,12 @@ function computeScore(auroraProbPercent, cloudCoverPercent) {
 
       cloudsEl.textContent = (clP === null || clP === undefined) ? "—" : String(clP);
       cloudTimeEl.textContent = clouds.time ? ("Aeg: " + clouds.time) : "";
+
+      // Temperatuur (°C)
+      const t = Number(temp?.temperatureC);
+      tempEl.textContent = Number.isFinite(t) ? t.toFixed(1) : (temp?.temperatureC ?? "—");
+      tempTimeEl.textContent = temp?.time ? ("Aeg: " + temp.time) : "";
+
 
       // 12h pilvisuse prognoos + AuroraScore (OVATION hoiab sama)
       try {
