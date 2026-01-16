@@ -82,6 +82,12 @@
         <div class="big" id="temp">—</div>
         <div class="muted" id="tempTime"></div>
       </div>
+    
+      <div class="mini" id="precipBox">
+        <div class="muted">Sademed (mm)</div>
+        <div class="big" id="precip">—</div>
+        <div class="muted" id="precipTime"></div>
+      </div>
     </div>
 
     <hr style="margin:16px 0; opacity:.25;" />
@@ -115,6 +121,9 @@
 
     const tempEl = document.getElementById("temp");
     const tempTimeEl = document.getElementById("tempTime");
+
+    const precipEl = document.getElementById("precip");
+    const precipTimeEl = document.getElementById("precipTime");
     const cloudBoxEl = document.getElementById("cloudBox");
 
     const kpEl = document.getElementById("kp");
@@ -250,12 +259,13 @@ function computeScore(auroraProbPercent, cloudCoverPercent) {
       cloudsEl.textContent = "…";
       kpEl.textContent = "…";
 
-      const [kp, aur, clouds, temp] = await Promise.all([
+      const [kp, aur, clouds, temp, precip] = await Promise.all([
         fetch("/api/kp").then(r => r.json()),
         fetch(`/api/aurora?lat=${chosen.lat}&lon=${chosen.lon}`).then(r => r.json()),
         fetch(`/api/clouds?lat=${chosen.lat}&lon=${chosen.lon}`).then(r => r.json())
       ,
-        fetch(`/api/temp?lat=${chosen.lat}&lon=${chosen.lon}`).then(r => r.json())]);
+        fetch(`/api/temp?lat=${chosen.lat}&lon=${chosen.lon}`).then(r => r.json()),
+        fetch(`/api/precip?lat=${chosen.lat}&lon=${chosen.lon}`).then(r => r.json())]);
 
       const kpNum = Number(kp.lastKp);
       kpEl.textContent = Number.isFinite(kpNum) ? kpNum.toFixed(2) : (kp.lastKp ?? "—");
@@ -279,6 +289,12 @@ function computeScore(auroraProbPercent, cloudCoverPercent) {
       const t = Number(temp?.temperatureC);
       tempEl.textContent = Number.isFinite(t) ? t.toFixed(1) : (temp?.temperatureC ?? "—");
       tempTimeEl.textContent = temp?.time ? ("Aeg: " + temp.time) : "";
+
+      // Sademed (mm)
+      const p = Number(precip?.precipitationMm);
+      precipEl.textContent = Number.isFinite(p) ? p.toFixed(1) : (precip?.precipitationMm ?? "—");
+      precipTimeEl.textContent = precip?.time ? ("Aeg: " + precip.time) : "";
+
 
 
       // 12h pilvisuse prognoos + AuroraScore (OVATION hoiab sama)

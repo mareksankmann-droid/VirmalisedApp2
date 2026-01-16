@@ -223,6 +223,36 @@ app.get("/api/temp", async (req, res) => {
 });
 
 
+
+// Open-Meteo: sademed (current) – mm
+app.get("/api/precip", async (req, res) => {
+  try {
+    const lat = Number(req.query.lat);
+    const lon = Number(req.query.lon);
+    if (!Number.isFinite(lat) || !Number.isFinite(lon)) {
+      return res.status(400).json({ error: "Lisa ?lat=..&lon=.." });
+    }
+
+    const url =
+      `https://api.open-meteo.com/v1/forecast?latitude=${encodeURIComponent(lat)}` +
+      `&longitude=${encodeURIComponent(lon)}` +
+      `&current=precipitation&timezone=Europe%2FTallinn`;
+
+    const r = await fetch(url);
+    if (!r.ok) throw new Error("Open-Meteo HTTP " + r.status);
+    const data = await r.json();
+
+    res.json({
+      request: { lat, lon },
+      time: data?.current?.time ?? null,
+      precipitationMm: data?.current?.precipitation ?? null
+    });
+  } catch (e) {
+    res.status(500).json({ error: String(e) });
+  }
+});
+
+
 app.listen(PORT, () => {
   console.log(`Ava brauseris: http://localhost:${PORT}`);
 });
