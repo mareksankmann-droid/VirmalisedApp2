@@ -1,0 +1,253 @@
+<!doctype html>
+<html lang="et">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Virmalised – prototüüp</title>
+  <style>
+    body { font-family: system-ui, -apple-system, sans-serif; margin: 24px; }
+    .card { border: 1px solid #ddd; border-radius: 12px; padding: 16px; max-width: 860px; }
+    .row { display:flex; gap:10px; flex-wrap:wrap; align-items:center; }
+    .grid { display:grid; grid-template-columns: 1fr 1fr 1fr; gap:12px; margin-top:12px; }
+    .mini { border:1px solid #eee; border-radius:12px; padding:12px; }
+    .big { font-size: 44px; font-weight: 800; margin: 6px 0; }
+    .muted { opacity: 0.75; }
+    button { padding: 10px 14px; font-size: 14px; cursor: pointer; border-radius: 10px; border: 1px solid #ccc; background: white; }
+    input { padding: 10px 12px; font-size: 14px; border-radius: 10px; border: 1px solid #ccc; width: 260px; }
+    details { margin-top: 12px; }
+    .help { border:1px solid #eee; border-radius:12px; padding:12px; margin-top:8px; background:#fafafa; }
+    .pill { display:inline-block; padding:6px 10px; border:1px solid #ddd; border-radius:999px; }
+
+    /* Score colors */
+    .good { background: #e9f7ef; border-color: #b7e4c7; }
+    .ok { background: #fff7e6; border-color: #ffd8a8; }
+    .bad { background: #ffecec; border-color: #ffc9c9; }
+    .num-good { color: #1b7f3a; }
+    .num-ok { color: #8a5b00; }
+    .num-bad { color: #b42318; }
+
+    @media (max-width: 860px) { .grid { grid-template-columns: 1fr; } }
+  </style>
+</head>
+<body>
+  <h1>Virmalised – prototüüp</h1>
+
+  <div class="card">
+    <div class="row">
+      <div>
+        <div class="muted">Linn (Eesti)</div>
+        <input id="city" placeholder="nt Tallinn, Tartu, Pärnu..." />
+      </div>
+      <button id="btnCity">Otsi</button>
+      <span class="pill" id="picked">Asukoht: —</span>
+      <button id="btnAll">Uuenda kõik</button>
+    </div>
+
+    <div class="row">
+      <div class="muted">Top linnad:</div>
+      <div class="row" id="topCities" style="gap:8px;"></div>
+    </div>
+
+    <details>
+      <summary class="muted">Mis need näitajad on?</summary>
+      <div class="help">
+        <b>Kp (0–9)</b> – magnettormi tugevus. Suurem Kp = suurem šanss virmalisi Eestis näha.<br/>
+        <b>OVATION (%)</b> – NOAA mudel, aurora “tõenäosus/aktiivsus” sinu koha lähedal.<br/>
+        <b>Pilvisus (%)</b> – kui palju pilved taevast katavad (mida väiksem, seda parem).<br/>
+        <b>AuroraScore</b> – lihtne “tasub minna?” number: OVATION × (1 − pilvisus).
+      </div>
+    </details>
+
+    <div class="grid">
+      <div class="mini" id="scoreBox">
+        <div class="muted">AuroraScore</div>
+        <div class="big" id="score">—</div>
+        <div class="muted" id="scoreHint"></div>
+      </div>
+
+      <div class="mini" id="auroraBox">
+        <div class="muted">OVATION (aurora %)</div>
+        <div class="big" id="aurora">—</div>
+        <div class="muted" id="auroraMeta"></div>
+      </div>
+
+      <div class="mini" id="cloudBox">
+        <div class="muted">Pilvisus (%)</div>
+        <div class="big" id="clouds">—</div>
+        <div class="muted" id="cloudTime"></div>
+      </div>
+    </div>
+
+    <hr style="margin:16px 0; opacity:.25;" />
+
+    <div class="muted">Viimane Kp</div>
+    <div class="big" id="kp">—</div>
+    <div class="muted" id="kpInfo"></div>
+  </div>
+
+  <script>
+    const cityInput = document.getElementById("city");
+    const pickedEl = document.getElementById("picked");
+    const btnCity = document.getElementById("btnCity");
+    const btnAll = document.getElementById("btnAll");
+
+    const scoreBoxEl = document.getElementById("scoreBox");
+    const scoreEl = document.getElementById("score");
+    const scoreHintEl = document.getElementById("scoreHint");
+
+    const auroraEl = document.getElementById("aurora");
+    const auroraMetaEl = document.getElementById("auroraMeta");
+    const auroraBoxEl = document.getElementById("auroraBox");
+
+    const cloudsEl = document.getElementById("clouds");
+    const cloudTimeEl = document.getElementById("cloudTime");
+    const cloudBoxEl = document.getElementById("cloudBox");
+
+    const kpEl = document.getElementById("kp");
+    const kpInfoEl = document.getElementById("kpInfo");
+
+    let chosen = { name: "Tallinn", lat: 59.437, lon: 24.7536 };
+
+    const TOP_CITIES = ["Tallinn","Tartu","Pärnu","Narva","Rakvere","Viljandi","Kuressaare","Haapsalu","Paide","Jõhvi"];
+    const topCitiesEl = document.getElementById("topCities");
+
+    function renderTopCities() {
+      if (!topCitiesEl) return;
+      topCitiesEl.innerHTML = "";
+      for (const name of TOP_CITIES) {
+        const b = document.createElement("button");
+        b.textContent = name;
+        b.addEventListener("click", async () => {
+          cityInput.value = name;
+          await geocodeCity();
+        });
+        topCitiesEl.appendChild(b);
+      }
+    }
+
+
+    function scoreAdvice(score) {
+      if (score >= 60) return "Tasub minna (pime koht + avatud põhjahorisont).";
+      if (score >= 30) return "Võib proovida, aga võib jääda nõrgaks.";
+      return "Praegu pigem ei tasu (või on väga nõrk).";
+    }
+
+    function setScoreColors(score) {
+      scoreBoxEl.classList.remove("good","ok","bad");
+      scoreEl.classList.remove("num-good","num-ok","num-bad");
+      const level = score >= 60 ? "good" : score >= 30 ? "ok" : "bad";
+      scoreBoxEl.classList.add(level);
+      scoreEl.classList.add(level === "good" ? "num-good" : level === "ok" ? "num-ok" : "num-bad");
+    }
+
+
+    function applyLevel(boxEl, numEl, level) {
+      if (!boxEl || !numEl) return;
+      boxEl.classList.remove("good","ok","bad");
+      numEl.classList.remove("num-good","num-ok","num-bad");
+      boxEl.classList.add(level);
+      numEl.classList.add(level === "good" ? "num-good" : level === "ok" ? "num-ok" : "num-bad");
+    }
+
+    function computeScore(auroraProbPercent, cloudCoverPercent) {
+      const aur = Number(auroraProbPercent ?? 0);
+      const cl = Number(cloudCoverPercent ?? 100);
+      return Math.max(0, Math.round(aur * (1 - cl / 100)));
+    }
+
+    async function geocodeCity() {
+      const name = cityInput.value.trim();
+      if (!name) return;
+
+      pickedEl.textContent = "Asukoht: otsin…";
+      const r = await fetch("/api/geocode?name=" + encodeURIComponent(name));
+      const data = await r.json();
+
+      if (!data.results || data.results.length === 0) {
+        pickedEl.textContent = "Asukoht: ei leitud";
+        return;
+      }
+
+      const top = data.results[0];
+      chosen = { name: top.name, lat: top.latitude, lon: top.longitude };
+      pickedEl.textContent = `Asukoht: ${top.name} (${top.latitude.toFixed(4)}, ${top.longitude.toFixed(4)})`;
+      await updateAll();
+    }
+
+    // Kp: tiksuv "uuendatud X min tagasi"
+    function startKpTicker(lastTimeStr) {
+      if (!lastTimeStr) { kpInfoEl.textContent = ""; return; }
+
+      // NOAA: "YYYY-MM-DD HH:MM:SS.mmm" -> käsitle UTC-na
+      const iso = lastTimeStr.replace(" ", "T") + "Z";
+      const d = new Date(iso);
+
+      const local = new Intl.DateTimeFormat("et-EE", {
+        dateStyle:"medium",
+        timeStyle:"short"
+      }).format(d);
+
+      function render() {
+        const mins = Math.max(0, Math.floor((Date.now() - d.getTime()) / 60000));
+        const hrs = Math.floor(mins / 60);
+        const rem = mins % 60;
+        const ago = hrs > 0 ? `${hrs} h ${rem} min tagasi` : `${rem} min tagasi`;
+        kpInfoEl.textContent = `Kp aeg: ${local} (uuendatud: ${ago})`;
+      }
+
+      render();
+      clearInterval(window.__kpTicker);
+      window.__kpTicker = setInterval(render, 1000);
+    }
+
+    async function updateAll() {
+      scoreEl.textContent = "…";
+      auroraEl.textContent = "…";
+      cloudsEl.textContent = "…";
+      kpEl.textContent = "…";
+
+      const [kp, aur, clouds] = await Promise.all([
+        fetch("/api/kp").then(r => r.json()),
+        fetch(`/api/aurora?lat=${chosen.lat}&lon=${chosen.lon}`).then(r => r.json()),
+        fetch(`/api/clouds?lat=${chosen.lat}&lon=${chosen.lon}`).then(r => r.json())
+      ]);
+
+      const kpNum = Number(kp.lastKp);
+      kpEl.textContent = Number.isFinite(kpNum) ? kpNum.toFixed(2) : (kp.lastKp ?? "—");
+      startKpTicker(kp.lastTime);
+
+      const aurP = aur.auroraProbPercent ?? 0;
+      const clP = clouds.cloudCoverPercent ?? 100;
+
+      const score = computeScore(aurP, clP);
+      scoreEl.textContent = score;
+      scoreHintEl.textContent = scoreAdvice(score);
+      setScoreColors(score);
+
+      auroraEl.textContent = (aurP === null || aurP === undefined) ? "—" : String(aurP);
+      auroraMetaEl.textContent = aur.matched ? `Grid: ${aur.matched.gridLat}, ${aur.matched.gridLon}` : "";
+
+      cloudsEl.textContent = (clP === null || clP === undefined) ? "—" : String(clP);
+      cloudTimeEl.textContent = clouds.time ? ("Aeg: " + clouds.time) : "";
+
+      // Värvid OVATION ja Pilvisus
+      // OVATION: 0-9 bad, 10-29 ok, 30+ good
+      const aurLevel = aurP >= 30 ? "good" : aurP >= 10 ? "ok" : "bad";
+      applyLevel(auroraBoxEl, auroraEl, aurLevel);
+
+      // Pilvisus: 0-20 good, 21-60 ok, 61+ bad
+      const cloudLevel = clP <= 20 ? "good" : clP <= 60 ? "ok" : "bad";
+      applyLevel(cloudBoxEl, cloudsEl, cloudLevel);
+
+    }
+
+    btnCity.addEventListener("click", geocodeCity);
+    cityInput.addEventListener("keydown", (e) => { if (e.key === "Enter") geocodeCity(); });
+    btnAll.addEventListener("click", updateAll);
+
+    pickedEl.textContent = `Asukoht: ${chosen.name} (${chosen.lat.toFixed(4)}, ${chosen.lon.toFixed(4)})`;
+    renderTopCities();
+    updateAll();
+  </script>
+</body>
+</html>
