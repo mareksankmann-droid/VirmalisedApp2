@@ -161,7 +161,7 @@ app.get("/api/clouds_next", async (req, res) => {
     const url =
       `https://api.open-meteo.com/v1/forecast?latitude=${encodeURIComponent(lat)}` +
       `&longitude=${encodeURIComponent(lon)}` +
-      `&hourly=cloud_cover&forecast_days=2&timezone=Europe%2FTallinn`;
+      `&hourly=cloud_cover,cloud_cover_low,cloud_cover_mid,cloud_cover_high&forecast_days=2&timezone=Europe%2FTallinn`;
 
     const r = await fetch(url);
     if (!r.ok) throw new Error("Open-Meteo HTTP " + r.status);
@@ -183,7 +183,10 @@ app.get("/api/clouds_next", async (req, res) => {
     for (let k = 0; k < hours; k++) {
       const j = idx + k;
       if (j >= times.length) break;
-      out.push({ time: times[j], cloudCoverPercent: clouds[j] });
+      out.push({ time: times[j], cloudCoverPercent: clouds[j] ,
+      cloudCoverLowPercent: (Number.isFinite(low) ? low : null ? low : null),
+      cloudCoverMidPercent: (Number.isFinite(mid) ? mid : null ? mid : null),
+      cloudCoverHighPercent: (Number.isFinite(high) ? high : null ? high : null),});
     }
 
     res.json({ request: { lat, lon, hours }, items: out });

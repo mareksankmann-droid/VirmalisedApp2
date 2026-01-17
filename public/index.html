@@ -288,18 +288,6 @@ function computeScore(auroraProbPercent, cloudCoverPercent) {
       cloudsEl.textContent = (clP === null || clP === undefined) ? "—" : String(clP);
       cloudTimeEl.textContent = clouds.time ? ("Aeg: " + clouds.time) : "";
 
-      if (cloudSourceEl) {
-        const st = clouds.station?.name ? ` • Jaam: ${clouds.station.name} (~${clouds.station.distanceKm} km)` : "";
-        const ph = clouds.phenomenon ? ` • Nähtus: ${clouds.phenomenon}` : "";
-        cloudSourceEl.textContent = `Pilvisus allikas: ${clouds.source ?? "—"}${st}${ph}`;
-      }
-
-      if ((clouds.cloudCoverPercent === null || clouds.cloudCoverPercent === undefined) && clouds.phenomenon) {
-        // kui pilvisust % ei saanud (nt vihm/udu), siis vähemalt ütleme nähtuse
-        // pilvisuse number jääb "—"
-      }
-
-
       // Temperatuur (°C)
       const t = Number(temp?.temperatureC);
       tempEl.textContent = Number.isFinite(t) ? t.toFixed(1) : (temp?.temperatureC ?? "—");
