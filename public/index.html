@@ -75,6 +75,7 @@
         <div class="muted">Pilvisus (%)</div>
         <div class="big" id="clouds">—</div>
         <div class="muted" id="cloudTime"></div>
+        <div class="muted" id="cloudSource" style="margin-top:4px;"></div>
       </div>
     
       <div class="mini" id="tempBox">
@@ -118,6 +119,8 @@
 
     const cloudsEl = document.getElementById("clouds");
     const cloudTimeEl = document.getElementById("cloudTime");
+
+    const cloudSourceEl = document.getElementById("cloudSource");
 
     const tempEl = document.getElementById("temp");
     const tempTimeEl = document.getElementById("tempTime");
@@ -262,7 +265,7 @@ function computeScore(auroraProbPercent, cloudCoverPercent) {
       const [kp, aur, clouds, temp, precip] = await Promise.all([
         fetch("/api/kp").then(r => r.json()),
         fetch(`/api/aurora?lat=${chosen.lat}&lon=${chosen.lon}`).then(r => r.json()),
-        fetch(`/api/clouds?lat=${chosen.lat}&lon=${chosen.lon}`).then(r => r.json())
+        fetch(`/api/clouds_obs?lat=${chosen.lat}&lon=${chosen.lon}`).then(r => r.json())
       ,
         fetch(`/api/temp?lat=${chosen.lat}&lon=${chosen.lon}`).then(r => r.json()),
         fetch(`/api/precip?lat=${chosen.lat}&lon=${chosen.lon}`).then(r => r.json())]);
@@ -284,6 +287,18 @@ function computeScore(auroraProbPercent, cloudCoverPercent) {
 
       cloudsEl.textContent = (clP === null || clP === undefined) ? "—" : String(clP);
       cloudTimeEl.textContent = clouds.time ? ("Aeg: " + clouds.time) : "";
+
+      if (cloudSourceEl) {
+        const st = clouds.station?.name ? ` • Jaam: ${clouds.station.name} (~${clouds.station.distanceKm} km)` : "";
+        const ph = clouds.phenomenon ? ` • Nähtus: ${clouds.phenomenon}` : "";
+        cloudSourceEl.textContent = `Pilvisus allikas: ${clouds.source ?? "—"}${st}${ph}`;
+      }
+
+      if ((clouds.cloudCoverPercent === null || clouds.cloudCoverPercent === undefined) && clouds.phenomenon) {
+        // kui pilvisust % ei saanud (nt vihm/udu), siis vähemalt ütleme nähtuse
+        // pilvisuse number jääb "—"
+      }
+
 
       // Temperatuur (°C)
       const t = Number(temp?.temperatureC);

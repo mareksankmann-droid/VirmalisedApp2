@@ -253,6 +253,96 @@ app.get("/api/precip", async (req, res) => {
 });
 
 
+
+// Ilmateenistus (Keskkonnaagentuur): vaatlusandmed XML
+// Allikas: ilmateenistus.ee/ilma_andmed/xml/observations.php
+// NB: kasutustingimus on viitamine Keskkonnaagentuurile ja link ilmateenistus.ee lehele.
+app.get("/api/clouds_obs", async (req, res) => {
+  try {
+    const lat = Number(req.query.lat);
+    const lon = Number(req.query.lon);
+    if (!Number.isFinite(lat) || !Number.isFinite(lon)) {
+      return res.status(400).json({ error: "Lisa ?lat=..&lon=.." });
+    }
+
+    // lazy require, et ei crashiks kui paketti pole
+    const { XMLParser } = require("fast-xml-parser");
+    const url = "https://www.ilmateenistus.ee/ilma_andmed/xml/observations.php";
+
+    const r = await fetch(url);
+    if (!r.ok) throw new Error("Ilmateenistus HTTP " + r.status);
+    const xml = await r.text();
+
+    const parser = new XMLParser({ ignoreAttributes: false, attributeNamePrefix: "" });
+    const obj = parser.parse(xml);
+
+    let stations = obj?.observations?.station ?? [];
+    if (!Array.isArray(stations)) stations = [stations];
+
+    function toNum(x){ const n = Number(x); return Number.isFinite(n) ? n : null; }
+    function haversineKm(lat1, lon1, lat2, lon2) {
+      const R = 6371;
+      const dLat = (lat2 - lat1) * Math.PI / 180;
+      const dLon = (lon2 - lon1) * Math.PI / 180;
+      const a =
+        Math.sin(dLat/2)**2 +
+        Math.cos(lat1*Math.PI/180)*Math.cos(lat2*Math.PI/180)*Math.sin(dLon/2)**2;
+      return 2 * R * Math.asin(Math.sqrt(a));
+    }
+
+    // pilvisuse mapping (nähtuste nimekirjast)
+    // Clear / Few clouds / Variable clouds / Cloudy with clear spells / Overcast
+    function phenomenonToCloudPercent(p) {
+      switch ((p || "").trim()) {
+        case "Clear": return 0;
+        case "Few clouds": return 20;
+        case "Variable clouds": return 50;
+        case "Cloudy with clear spells": return 75;
+        case "Overcast": return 100;
+        default: return null; // kui on vihm/udu vms, siis see pole puhas pilvisus
+      }
+    }
+
+    // leia lähim jaam
+    let best = null;
+    for (const st of stations) {
+      const slat = toNum(st.latitude);
+      const slon = toNum(st.longitude);
+      if (slat == null || slon == null) continue;
+      const d = haversineKm(lat, lon, slat, slon);
+      if (!best || d < best.distKm) best = { st, distKm: d };
+    }
+
+    if (!best) {
+      return res.json({ request:{lat,lon}, cloudCoverPercent: null, source: "Ilmateenistus", note: "Jaamu ei leitud XML-ist" });
+    }
+
+    const phenomenon = best.st?.phenomenon ?? null;
+    const cloudCoverPercent = phenomenonToCloudPercent(phenomenon);
+
+    // timestamp on rootis
+    const ts = Number(obj?.observations?.timestamp);
+    const time = Number.isFinite(ts) ? new Date(ts * 1000).toISOString() : null;
+
+    res.json({
+      request: { lat, lon },
+      time,
+      source: "Ilmateenistus (Keskkonnaagentuur)",
+      station: {
+        name: best.st?.name ?? null,
+        latitude: toNum(best.st?.latitude),
+        longitude: toNum(best.st?.longitude),
+        distanceKm: Math.round(best.distKm * 10) / 10
+      },
+      phenomenon,
+      cloudCoverPercent
+    });
+  } catch (e) {
+    res.status(500).json({ error: String(e) });
+  }
+});
+
+
 app.listen(PORT, () => {
   console.log(`Ava brauseris: http://localhost:${PORT}`);
 });
