@@ -181,7 +181,6 @@
 
     
     function renderForecast(items, aurP) {
-      // forecastEl peab olema olemas (sul on see juba mujal defineeritud)
       if (!forecastEl) return;
 
       if (!Array.isArray(items) || items.length === 0) {
@@ -192,15 +191,8 @@
       const toHHMM = (iso) => {
         try {
           const d = new Date(iso);
-          return d.toLocaleTimeString("et-EE", {
-            hour: "2-digit",
-            minute: "2-digit",
-            hour12: false,
-            timeZone: "Europe/Tallinn"
-          });
-        } catch {
-          return String(iso ?? "");
-        }
+          return d.toLocaleTimeString("et-EE", { hour: "2-digit", minute: "2-digit", hour12: false, timeZone: "Europe/Tallinn" });
+        } catch { return String(iso ?? ""); }
       };
 
       const fmtCloud = (it) => {
@@ -214,42 +206,55 @@
 
       const a = Number(aurP ?? 0);
 
-      let html = "<div class=\"muted\" style=\"margin:6px 0 10px 0;\">Total (kokku) võib olla 100% Eff (Score jaoks) = 0.7×L + 0.2×M + 0.1×H (madalad pilved mõjutavad kõige rohkem). ka siis, kui pilved on peamiselt kõrgel (H). L/M/H näitab, mis kihis pilved on.</div>" + "<table style=\"width:100%; border-collapse:collapse\">" +
+      // selgitus + tabel
+      let html =
+        "<div class=\"muted\" style=\"margin:6px 0 10px 0;\">" +
+        "Total (kokku) võib olla 100% ka siis, kui pilved on peamiselt kõrgel (H). " +
+        "Eff (Score jaoks) = 0.7×L + 0.2×M + 0.1×H." +
+        "</div>" +
+        "<table style=\"width:100%; border-collapse:collapse\">" +
         "<thead><tr>" +
         "<th style=\"text-align:left; padding:6px 0; border-bottom:1px solid rgba(255,255,255,.15)\">Aeg</th>" +
         "<th style=\"text-align:left; padding:6px 0; border-bottom:1px solid rgba(255,255,255,.15)\">Pilv % (kokku + L/M/H)</th>" +
+        "<th style=\"text-align:left; padding:6px 0; border-bottom:1px solid rgba(255,255,255,.15)\">Temp °C</th>" +
+        "<th style=\"text-align:left; padding:6px 0; border-bottom:1px solid rgba(255,255,255,.15)\">Sademed mm</th>" +
         "<th style=\"text-align:left; padding:6px 0; border-bottom:1px solid rgba(255,255,255,.15)\">Score</th>" +
         "</tr></thead><tbody>";
 
       for (const it of items) {
         const t = toHHMM(it.time);
-        const total = Number(it?.cloudCoverPercent);
+
         const low = Number(it?.cloudLowPercent);
         const mid = Number(it?.cloudMidPercent);
         const high = Number(it?.cloudHighPercent);
+        const total = Number(it?.cloudCoverPercent);
 
-        // "Effective" pilvisus Score jaoks: L kaalub enim, H vähim
         let eff = NaN;
         if (Number.isFinite(low) || Number.isFinite(mid) || Number.isFinite(high)) {
           const l = Number.isFinite(low) ? low : 0;
           const m = Number.isFinite(mid) ? mid : 0;
           const h = Number.isFinite(high) ? high : 0;
-          eff = 0.7 * l + 0.2 * m + 0.1 * h;
+          eff = 0.7*l + 0.2*m + 0.1*h;
         } else if (Number.isFinite(total)) {
           eff = total;
         }
 
-        // Score: auroraProb% * (1 - effCloud%)
         const score = Number.isFinite(eff)
           ? Math.max(0, Math.min(100, Math.round(a * (1 - eff/100))))
           : "—";
+        const scoreText = (score === "—") ? "—" : (String(score) + " (eff: " + Math.round(eff) + "%)");
 
-        const effText = (typeof eff === "number" && isFinite(eff)) ? (" (eff: " + Math.round(eff) + "%)") : "";
-        const scoreText = (score === "—") ? "—" : (String(score) + effText);
+        const temp = Number(it?.temperatureC);
+        const tempText = Number.isFinite(temp) ? temp.toFixed(1) : "—";
+
+        const pr = Number(it?.precipitationMm);
+        const prText = Number.isFinite(pr) ? pr.toFixed(1) : "—";
 
         html += "<tr>" +
           "<td style=\"padding:6px 0; border-bottom:1px solid rgba(255,255,255,.08)\">" + t + "</td>" +
           "<td style=\"padding:6px 0; border-bottom:1px solid rgba(255,255,255,.08)\">" + fmtCloud(it) + "</td>" +
+          "<td style=\"padding:6px 0; border-bottom:1px solid rgba(255,255,255,.08)\">" + tempText + "</td>" +
+          "<td style=\"padding:6px 0; border-bottom:1px solid rgba(255,255,255,.08)\">" + prText + "</td>" +
           "<td style=\"padding:6px 0; border-bottom:1px solid rgba(255,255,255,.08)\">" + scoreText + "</td>" +
           "</tr>";
       }

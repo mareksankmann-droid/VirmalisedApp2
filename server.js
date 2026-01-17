@@ -148,6 +148,8 @@ app.get("/api/clouds", async (req, res) => {
 
 
 // Pilvisus prognoos järgmisteks tundideks (nt 12h)
+
+// Pilvisus prognoos järgmisteks tundideks (nt 12h)
 app.get("/api/clouds_next", async (req, res) => {
   try {
     const lat = Number(req.query.lat);
@@ -161,16 +163,21 @@ app.get("/api/clouds_next", async (req, res) => {
     const url =
       `https://api.open-meteo.com/v1/forecast?latitude=${encodeURIComponent(lat)}` +
       `&longitude=${encodeURIComponent(lon)}` +
-      `&hourly=cloud_cover,cloud_cover_low,cloud_cover_mid,cloud_cover_high&forecast_days=2&timezone=Europe%2FTallinn`;
+      `&hourly=cloud_cover,cloud_cover_low,cloud_cover_mid,cloud_cover_high,temperature_2m,precipitation` +
+      `&forecast_days=2&timezone=Europe%2FTallinn`;
 
     const r = await fetch(url);
     if (!r.ok) throw new Error("Open-Meteo HTTP " + r.status);
     const data = await r.json();
 
     const times = data?.hourly?.time ?? [];
-    const clouds = data?.hourly?.cloud_cover ?? [];
+    const total = data?.hourly?.cloud_cover ?? [];
+    const lowA  = data?.hourly?.cloud_cover_low ?? [];
+    const midA  = data?.hourly?.cloud_cover_mid ?? [];
+    const highA = data?.hourly?.cloud_cover_high ?? [];
+    const temps = data?.hourly?.temperature_2m ?? [];
+    const precs = data?.hourly?.precipitation ?? [];
 
-    // leia lähim indeks "praegusele"
     const now = Date.now();
     let idx = 0, best = Infinity;
     for (let j = 0; j < times.length; j++) {
@@ -179,23 +186,26 @@ app.get("/api/clouds_next", async (req, res) => {
       if (Number.isFinite(d) && d < best) { best = d; idx = j; }
     }
 
-    const out = [];
+    const items = [];
     for (let k = 0; k < hours; k++) {
       const j = idx + k;
       if (j >= times.length) break;
-      out.push({ time: times[j], cloudCoverPercent: clouds[j] ,
-      cloudCoverLowPercent: (Number.isFinite(low) ? low : null ? low : null),
-      cloudCoverMidPercent: (Number.isFinite(mid) ? mid : null ? mid : null),
-      cloudCoverHighPercent: (Number.isFinite(high) ? high : null ? high : null),});
+      items.push({
+        time: times[j],
+        cloudCoverPercent: total[j] ?? null,
+        cloudLowPercent: lowA[j] ?? null,
+        cloudMidPercent: midA[j] ?? null,
+        cloudHighPercent: highA[j] ?? null,
+        temperatureC: temps[j] ?? null,
+        precipitationMm: precs[j] ?? null
+      });
     }
 
-    res.json({ request: { lat, lon, hours }, items: out });
+    res.json({ request: { lat, lon, hours }, items });
   } catch (e) {
     res.status(500).json({ error: String(e) });
   }
 });
-
-
 
 // Open-Meteo: temperatuur (current)
 app.get("/api/temp", async (req, res) => {
@@ -260,6 +270,8 @@ app.get("/api/precip", async (req, res) => {
 // Ilmateenistus (Keskkonnaagentuur): vaatlusandmed XML
 // Allikas: ilmateenistus.ee/ilma_andmed/xml/observations.php
 // NB: kasutustingimus on viitamine Keskkonnaagentuurile ja link ilmateenistus.ee lehele.
+
+// Ilmateenistus: vaatlusandmed (pilvisus “praegu”) + fallback Open-Meteo peale
 app.get("/api/clouds_obs", async (req, res) => {
   try {
     const lat = Number(req.query.lat);
@@ -268,7 +280,6 @@ app.get("/api/clouds_obs", async (req, res) => {
       return res.status(400).json({ error: "Lisa ?lat=..&lon=.." });
     }
 
-    // lazy require, et ei crashiks kui paketti pole
     const { XMLParser } = require("fast-xml-parser");
     const url = "https://www.ilmateenistus.ee/ilma_andmed/xml/observations.php";
 
@@ -276,35 +287,37 @@ app.get("/api/clouds_obs", async (req, res) => {
     if (!r.ok) throw new Error("Ilmateenistus HTTP " + r.status);
     const xml = await r.text();
 
-    const parser = new XMLParser({ ignoreAttributes: false, attributeNamePrefix: "" });
+    const parser = new XMLParser({ ignoreAttributes: true });
     const obj = parser.parse(xml);
 
     let stations = obj?.observations?.station ?? [];
     if (!Array.isArray(stations)) stations = [stations];
 
-    function toNum(x){ const n = Number(x); return Number.isFinite(n) ? n : null; }
-    function haversineKm(lat1, lon1, lat2, lon2) {
+    const toNum = (x) => {
+      const n = Number(x);
+      return Number.isFinite(n) ? n : null;
+    };
+
+    const havKm = (lat1, lon1, lat2, lon2) => {
       const R = 6371;
       const dLat = (lat2 - lat1) * Math.PI / 180;
       const dLon = (lon2 - lon1) * Math.PI / 180;
       const a =
         Math.sin(dLat/2)**2 +
-        Math.cos(lat1*Math.PI/180)*Math.cos(lat2*Math.PI/180)*Math.sin(dLon/2)**2;
+        Math.cos(lat1*Math.PI/180)*Math.cos(lat2*Math.PI/180) *
+        Math.sin(dLon/2)**2;
       return 2 * R * Math.asin(Math.sqrt(a));
-    }
+    };
 
-    // pilvisuse mapping (nähtuste nimekirjast)
-    // Clear / Few clouds / Variable clouds / Cloudy with clear spells / Overcast
-    function phenomenonToCloudPercent(p) {
-      switch ((p || "").trim()) {
-        case "Clear": return 0;
-        case "Few clouds": return 20;
-        case "Variable clouds": return 50;
-        case "Cloudy with clear spells": return 75;
-        case "Overcast": return 100;
-        default: return null; // kui on vihm/udu vms, siis see pole puhas pilvisus
-      }
-    }
+    const phenToPct = (p) => {
+      const v = (p || "").trim();
+      if (v === "Clear") return 0;
+      if (v === "Few clouds") return 20;
+      if (v === "Variable clouds") return 50;
+      if (v === "Cloudy with clear spells") return 75;
+      if (v === "Overcast") return 100;
+      return null;
+    };
 
     // leia lähim jaam
     let best = null;
@@ -312,38 +325,74 @@ app.get("/api/clouds_obs", async (req, res) => {
       const slat = toNum(st.latitude);
       const slon = toNum(st.longitude);
       if (slat == null || slon == null) continue;
-      const d = haversineKm(lat, lon, slat, slon);
+      const d = havKm(lat, lon, slat, slon);
       if (!best || d < best.distKm) best = { st, distKm: d };
     }
 
-    if (!best) {
-      return res.json({ request:{lat,lon}, cloudCoverPercent: null, source: "Ilmateenistus", note: "Jaamu ei leitud XML-ist" });
-    }
-
-    const phenomenon = best.st?.phenomenon ?? null;
-    const cloudCoverPercent = phenomenonToCloudPercent(phenomenon);
-
-    // timestamp on rootis
     const ts = Number(obj?.observations?.timestamp);
     const time = Number.isFinite(ts) ? new Date(ts * 1000).toISOString() : null;
+
+    if (!best) {
+      return res.json({ request:{lat,lon}, time, cloudCoverPercent: null, source: "Ilmateenistus", note: "Jaamu ei leitud" });
+    }
+
+    const st = best.st;
+    const phenomenon = (st?.phenomenon ?? "").trim();
+
+    // 1) Proovi cloudiness (palli) kui olemas (0..8)
+    // (Ilmateenistus kaardil on pilvisus “palli”.) 
+    let cloudinessBall = toNum(st?.cloudiness); // kui seda tagi pole, jääb null
+    let cloudCoverPercent = null;
+    let source = "Ilmateenistus (Keskkonnaagentuur)";
+
+    if (cloudinessBall != null && cloudinessBall >= 0 && cloudinessBall <= 8) {
+      cloudCoverPercent = Math.round((cloudinessBall / 8) * 100);
+      source += " • cloudiness(pall)";
+    } else {
+      // 2) Proovi phenomenon -> %
+      const p = phenToPct(phenomenon);
+      if (p != null) {
+        cloudCoverPercent = p;
+        source += " • phenomenon";
+      }
+    }
+
+    // 3) Kui ikka null, siis fallback Open-Meteo current cloud_cover (et linnades poleks “tühja”)
+    if (cloudCoverPercent == null) {
+      const omUrl =
+        `https://api.open-meteo.com/v1/forecast?latitude=${encodeURIComponent(lat)}` +
+        `&longitude=${encodeURIComponent(lon)}` +
+        `&current=cloud_cover&timezone=Europe%2FTallinn`;
+      const rr = await fetch(omUrl);
+      if (rr.ok) {
+        const data = await rr.json();
+        const cc = Number(data?.current?.cloud_cover);
+        if (Number.isFinite(cc)) {
+          cloudCoverPercent = cc;
+          source += " • Open-Meteo fallback";
+        }
+      }
+    }
 
     res.json({
       request: { lat, lon },
       time,
-      source: "Ilmateenistus (Keskkonnaagentuur)",
+      source,
       station: {
-        name: best.st?.name ?? null,
-        latitude: toNum(best.st?.latitude),
-        longitude: toNum(best.st?.longitude),
+        name: st?.name ?? null,
+        latitude: toNum(st?.latitude),
+        longitude: toNum(st?.longitude),
         distanceKm: Math.round(best.distKm * 10) / 10
       },
-      phenomenon,
+      phenomenon: phenomenon || null,
+      cloudinessBall: cloudinessBall,
       cloudCoverPercent
     });
   } catch (e) {
     res.status(500).json({ error: String(e) });
   }
 });
+
 
 
 app.listen(PORT, () => {
