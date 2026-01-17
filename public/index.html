@@ -245,10 +245,20 @@
         const scoreText = (score === "—") ? "—" : (String(score) + " (eff: " + Math.round(eff) + "%)");
 
         const temp = Number(it?.temperatureC);
-        const tempText = Number.isFinite(temp) ? temp.toFixed(1) : "—";
+        let tempText = "—";
+        if (it?.temperatureC !== null && it?.temperatureC !== undefined) {
+          const tRaw = it.temperatureC;
+          const tNum = Number(tRaw);
+          tempText = Number.isFinite(tNum) ? tNum.toFixed(1) : String(tRaw);
+        }
 
         const pr = Number(it?.precipitationMm);
-        const prText = Number.isFinite(pr) ? pr.toFixed(1) : "—";
+        let prText = "—";
+        if (it?.precipitationMm !== null && it?.precipitationMm !== undefined) {
+          const pRaw = it.precipitationMm;
+          const pNum = Number(pRaw);
+          prText = Number.isFinite(pNum) ? pNum.toFixed(1) : String(pRaw);
+        }
 
         html += "<tr>" +
           "<td style=\"padding:6px 0; border-bottom:1px solid rgba(255,255,255,.08)\">" + t + "</td>" +
